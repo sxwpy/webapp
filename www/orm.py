@@ -38,22 +38,22 @@ async def select(sql,args,size=None):
         logging.info('rows returned:%s'%len(rs))
         return rs
 
-async def execute(sql,args,autocommit=True):
+async def execute(sql, args, autocommit=True):
     log(sql)
     async with __pool.get() as conn:
         if not autocommit:
             await conn.begin()
-            try:
-                async with conn.cursor(aiomysql.DictCursor) as cur:
-                    await cur.execute(sql.replace('?','%s'),args)
-                    affected=cur.rowcount
-                if not autocommit:
-                    await conn.commit()
-            except BaseException as e:
-                if not autocommit:
-                    await  conn.rollback()
-                raise
-             return affected
+        try:
+            async with conn.cursor(aiomysql.DictCursor) as cur:
+                await cur.execute(sql.replace('?', '%s'), args)
+                affected = cur.rowcount
+            if not autocommit:
+                await conn.commit()
+        except BaseException as e:
+            if not autocommit:
+                await conn.rollback()
+            raise
+        return affected
 
 def create_args_string(num):
     l=[]
@@ -127,9 +127,9 @@ class MOdelMetaclass(type):
         attrs['__delete__'] = 'delete from `%s` where `%s`=?' % (tableName, primarykey)
         return type.__new__(cls, name, bases, attrs)
 
-class Model(dict,metaclass=ModelMetaclass):
+class Model(dict,metaclass=MOdelMetaclass):
 	def __init__(self,**kw):
-	super(Model,self).__init__(**kw)
+	    super(Model,self).__init__(**kw)
 	
 	def __getattr__(self,key):
 		try:
@@ -137,7 +137,7 @@ class Model(dict,metaclass=ModelMetaclass):
 		except KeyError:
 			raise AttributeError(r"'Model' object has no attribute '%s'"%key)
 		
-	def __setattr__(sef,key,value):
+	def __setattr__(self,key,value):
 		self[key]=value
 		
 	def getValue(self,key):
@@ -188,7 +188,7 @@ class Model(dict,metaclass=ModelMetaclass):
 			sql.append('where')
 			sql.append(where)
 		rs= await select(' '.join(sql),args,1)
-		if len(rs)==0
+		if len(rs)==0:
 			return None
 		return cls(**rs[0])
 		
@@ -197,7 +197,7 @@ class Model(dict,metaclass=ModelMetaclass):
 		args.append(self.getValueOrDefault(self.__primary_key__))
 		rows=await execute(self.__init__,args)
 		if rows!=1:
-			logging.warn('failed to insert record:affected row:%s'%rows)
+			logging.warning('failed to insert record:affected row:%s'%rows)
 				
 	async def update(self):
 		args=list(map(self.getValue,self.__fields__))
@@ -206,8 +206,8 @@ class Model(dict,metaclass=ModelMetaclass):
 		if rows!=1:
 			logging.warn('failed to update by primary key : affected rows:%s'%rows)
 			
-	async def remove(self)
+	async def remove(self):
 		args=[self.getValue(self.__primary_key__)]
 		rows=await execute(self.__delete__,args)
 		if rows!=1:
-			logging.warn('failed to remove by primary key:affected rows:%s'%rows)
+			logging.warning('failed to remove by primary key:affected rows:%s'%rows)
